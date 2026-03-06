@@ -1,38 +1,45 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import admin from 'firebase-admin';
-import { initializeApp, applicationDefault, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
 
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT as string);
-const app = initializeApp({
-  credential: cert(serviceAccount),
-});
-
-const db = getFirestore(app);
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+  });
+}
 
 interface AuthedRequest extends NextApiRequest {
-  user?: {
-    uid: string;
-  };
+  uid?: string;
 }
 
-export default async function handler(req: AuthedRequest, res: NextApiResponse) {
+const records: Map<string, object[]> = new Map();
+
+const handler = async (req: AuthedRequest, res: NextApiResponse) => {
   try {
     if (req.method === 'GET') {
-      const recordsRef = db.collection('records');
-      const snapshot = await recordsRef.get();
-      const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return res.status(200).json(records);
-    } else if (req.method === 'POST') {
-      const { name, data } = req.body;
-      const record = { name, data, createdAt: admin.firestore.FieldValue.serverTimestamp() };
-      const newRecordRef = await db.collection('records').add(record);
-      
-      return res.status(201).json({ id: newRecordRef.id, ...record });
-    } else {
-      return res.setHeader('Allow', ['GET', 'POST']).status(405).end(`Method ${req.method} Not Allowed`);
+      const userID = req.query.userID as string;
+      if (!userID || !records.has(userID)) {
+        return res.status(404).json({ message: 'Records not found' });
+      }
+      return res.status(200).json(records.get(userID));
     }
+
+    if (req.method === 'POST') {
+      const { userID, record } = req.body;
+      if (!userID || !record) {
+        return res.status(400).json({ message: 'Invalid request data' });
+      }
+      
+      const userRecords = records.get(userID) || [];
+      userRecords.push(record);
+      records.set(userID, userRecords);
+      
+      return res.status(201).json({ message: 'Record created', record });
+    }
+
+    return res.status(405).json({ message: 'Method not allowed' });
   } catch (err) {
-    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    return res.status(500).json({ message: err instanceof Error ? err.message : String(err) });
   }
-}
+};
+
+export default handler;
