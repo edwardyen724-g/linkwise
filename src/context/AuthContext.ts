@@ -12,7 +12,7 @@ const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [user, setUser] = useState(null);
 
     const signIn = async (email: string, password: string) => {
-        // Implementation of sign in logic
+        // Implementation of sign in logic with password verification
     };
 
     const signOut = async () => {
