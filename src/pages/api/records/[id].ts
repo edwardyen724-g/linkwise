@@ -1,72 +1,65 @@
-import { NextApiRequest, NextApiResponse } from "next";
-import { getAuth } from "firebase-admin/auth";
-import { firestore } from "firebase-admin"; // Assuming the Firestore is initialized elsewhere
-import { initializeApp, applicationDefault, cert } from "firebase-admin/app";
-import admin from "firebase-admin";
-
-const app = initializeApp({
-  credential: applicationDefault(), // Or use cert(serviceAccount) for service account
-});
+import { NextApiRequest, NextApiResponse } from 'next';
+import admin from 'firebase-admin';
 
 interface AuthedRequest extends NextApiRequest {
   uid?: string;
 }
 
-const db = firestore(app);
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT as string)),
+  });
+}
 
-const rateLimit = new Map<string, number>();
+const db = admin.firestore();
 
-const checkRateLimit = (id: string) => {
-  const currentTime = Date.now();
-  const limit = 1000; // 1 second
-  if (rateLimit.has(id)) {
-    const lastRequestTime = rateLimit.get(id)!;
-    if (currentTime - lastRequestTime < limit) {
-      throw new Error("Too many requests, please try again later.");
-    }
+const rateLimitMap = new Map<string, { count: number; timer: NodeJS.Timeout }>();
+
+const rateLimit = (req: NextApiRequest) => {
+  const key = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+  const limit = 5; // Limit requests to 5 per minute
+  const resetTime = 60000; // 1 minute
+
+  if (!rateLimitMap.has(key)) {
+    rateLimitMap.set(key, { count: 1, timer: setTimeout(() => rateLimitMap.delete(key), resetTime) });
+    return true;
   }
-  rateLimit.set(id, currentTime);
+
+  const record = rateLimitMap.get(key)!;
+  if (record.count < limit) {
+    record.count++;
+    return true;
+  }
+
+  return false;
 };
 
 export default async function handler(req: AuthedRequest, res: NextApiResponse) {
-  const { method } = req;
-  const { id } = req.query;
-
-  if (!id || Array.isArray(id)) {
-    return res.status(400).json({ error: "Invalid record ID" });
+  if (!rateLimit(req)) {
+    return res.status(429).json({ message: 'Too many requests. Please try again later.' });
   }
 
-  try {
-    checkRateLimit(id);
+  const { id } = req.query;
 
-    const authToken = req.headers.authorization?.split("Bearer ")[1];
-    if (!authToken) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    const decodedToken = await getAuth().verifyIdToken(authToken);
-    req.uid = decodedToken.uid;
-
-    if (method === "DELETE") {
-      const recordRef = db.collection("records").doc(id);
-      await recordRef.delete();
-      return res.status(204).end();
-    }
-
-    if (method === "PUT") {
-      const { data } = req.body;
-      if (!data) {
-        return res.status(400).json({ error: "No data provided" });
+  switch (req.method) {
+    case 'DELETE':
+      try {
+        await db.collection('records').doc(String(id)).delete();
+        return res.status(204).end();
+      } catch (err) {
+        return res.status(500).json({ message: err instanceof Error ? err.message : String(err) });
       }
 
-      const recordRef = db.collection("records").doc(id);
-      await recordRef.update(data);
-      return res.status(200).json({ message: "Record updated successfully" });
-    }
+    case 'PUT':
+      try {
+        const data = req.body;
+        await db.collection('records').doc(String(id)).set(data, { merge: true });
+        return res.status(200).json({ message: 'Record updated successfully.' });
+      } catch (err) {
+        return res.status(500).json({ message: err instanceof Error ? err.message : String(err) });
+      }
 
-    return res.status(405).json({ error: "Method not allowed" });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    default:
+      return res.setHeader('Allow', ['PUT', 'DELETE']).status(405).end(`Method ${req.method} Not Allowed`);
   }
 }
