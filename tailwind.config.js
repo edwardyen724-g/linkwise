@@ -1,40 +1,25 @@
-const plugin = require('tailwindcss/plugin');
+const { fontFamily } = require('tailwindcss/defaultTheme');
 
 module.exports = {
-  mode: 'jit',
-  purge: ['./src/**/*.{js,jsx,ts,tsx}', './public/index.html'],
-  darkMode: false, // or 'media' or 'class'
+  content: [
+    './src/app/**/*.{js,ts,jsx,tsx}',
+    './src/components/**/*.{js,ts,jsx,tsx}',
+    './src/pages/**/*.{js,ts,jsx,tsx}',
+  ],
   theme: {
     extend: {
       colors: {
-        primary: '#4A90E2',
-        secondary: '#6BAF45',
-        accent: '#F5A623',
-        background: '#F4F4F4',
-        text: '#333333',
+        primary: '#3B82F6',
+        secondary: '#1D4ED8',
+        accent: '#9333EA',
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['Inter', ...fontFamily.sans],
       },
-      spacing: {
-        '18': '4.5rem',
-        '72': '18rem',
+      screens: {
+        '2xl': '1440px',
       },
     },
   },
-  variants: {
-    extend: {
-      opacity: ['disabled'],
-      cursor: ['disabled'],
-    },
-  },
-  plugins: [
-    plugin(function ({ addUtilities }) {
-      addUtilities({
-        '.scroll-smooth': {
-          scrollBehavior: 'smooth',
-        },
-      });
-    }),
-  ],
+  plugins: [],
 };
