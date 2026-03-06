@@ -9,7 +9,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState(null);
+    const [user, setUser] = useState<any>(null);
 
     const signIn = async (email: string, password: string) => {
         // Implementation of sign in logic with password verification
